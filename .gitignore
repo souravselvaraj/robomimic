@@ -121,3 +121,8 @@ venv.bak/
 
 # private macros
 macros_private.py
+
+# flow matching experiment artifacts (large)
+output/*.pth
+output/*.out
+output/fm_square_lowdim/
