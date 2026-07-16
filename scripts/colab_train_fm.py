@@ -47,11 +47,12 @@ def get_standard_obs_keys(dataset_path):
     return sorted(keys)
 
 
-def get_model(dataset_path, device, num_epochs, gradient_steps_per_epoch):
+def get_model(dataset_path, device, num_epochs, gradient_steps_per_epoch, algo_name="flow_matching"):
     """
-    Use a default flow matching config to construct the model (colab section 3).
+    Use a default config for @algo_name to construct the model (colab section 3).
+    Works for both "flow_matching" and "diffusion_policy" (identical protocol).
     """
-    config = config_factory(algo_name="flow_matching")
+    config = config_factory(algo_name=algo_name)
 
     obs_keys = get_standard_obs_keys(dataset_path)
 
@@ -229,6 +230,7 @@ if __name__ == "__main__":
     parser.add_argument("--eval_only", action="store_true", help="skip training and evaluate the saved checkpoint")
     parser.add_argument("--save_every", type=int, default=50, help="save a resumable checkpoint every N epochs (0 to disable)")
     parser.add_argument("--resume", action="store_true", help="resume training from the checkpoint at --ckpt if it exists")
+    parser.add_argument("--algo", default="flow_matching", choices=["flow_matching", "diffusion_policy"], help="algorithm to train")
     parser.add_argument("--num_inference_steps", type=int, default=None, help="override algo.fm.num_inference_steps for evaluation")
     parser.add_argument("--solver", default=None, choices=["euler", "midpoint"], help="override algo.fm.solver for evaluation")
     args = parser.parse_args()
@@ -236,10 +238,10 @@ if __name__ == "__main__":
     assert os.path.exists(args.dataset), args.dataset
     device = TorchUtils.get_torch_device(try_to_use_cuda=True)
 
-    model, config = get_model(args.dataset, device, args.num_epochs, args.steps_per_epoch)
+    model, config = get_model(args.dataset, device, args.num_epochs, args.steps_per_epoch, algo_name=args.algo)
 
-    # inference-time overrides (config.algo is the same object the model reads)
-    if args.num_inference_steps is not None or args.solver is not None:
+    # inference-time overrides (config.algo is the same object the model reads; flow_matching only)
+    if args.algo == "flow_matching" and (args.num_inference_steps is not None or args.solver is not None):
         with config.unlocked():
             if args.num_inference_steps is not None:
                 config.algo.fm.num_inference_steps = args.num_inference_steps

@@ -24,17 +24,35 @@ class PrintLogger(object):
     """
     def __init__(self, log_file):
         self.terminal = sys.stdout
+        # On some SLURM setups the inherited stdout/stderr fds are in non-blocking
+        # mode, so tqdm's rapid flushes raise BlockingIOError [Errno 11] and kill
+        # the run. Force the underlying fds back to blocking mode to avoid this.
+        for stream in (sys.stdout, sys.stderr):
+            try:
+                os.set_blocking(stream.fileno(), True)
+            except (OSError, ValueError, AttributeError):
+                pass
         print('STDOUT will be forked to %s' % log_file)
         self.log_file = open(log_file, "a")
 
+    @staticmethod
+    def _retry_blocking(fn, *args):
+        # retry a write/flush that hits a transient non-blocking pipe (Errno 11)
+        for _ in range(50):
+            try:
+                return fn(*args)
+            except BlockingIOError:
+                time.sleep(0.01)
+        return None
+
     def write(self, message):
-        self.terminal.write(message)
+        self._retry_blocking(self.terminal.write, message)
         self.log_file.write(message)
-        self.log_file.flush()
+        self._retry_blocking(self.log_file.flush)
 
     def flush(self):
         # ensure stdout gets flushed
-        self.terminal.flush()
+        self._retry_blocking(self.terminal.flush)
 
 
 class DataLogger(object):

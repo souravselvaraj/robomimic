@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH -J fm_square
 #SBATCH -A mmaghelih
-#SBATCH -p short
-#SBATCH --qos=short
+#SBATCH -p short,long,quick
 #SBATCH --gres=gpu:1
+#SBATCH --constraint=RTX6000B|A100|H100
 #SBATCH -c 8
 #SBATCH --mem=32G
-#SBATCH -t 12:00:00
+#SBATCH -t 11:59:00
 #SBATCH -o /scratch/sselvaraj/projects/Flowmatch/robomimic/output/fm_square_%j.out
 
 export WANDB_CONSOLE=off

@@ -2,7 +2,7 @@
     "algo_name": "flow_matching",
     "experiment": {
         "name": "fm_square_lowdim",
-        "validate": true,
+        "validate": false,
         "logging": {
             "terminal_output_to_txt": true,
             "log_tb": true,
@@ -23,11 +23,9 @@
         "render_video": false
     },
     "train": {
-        "data": "/scratch/sselvaraj/projects/Kuromoto-Diffusion-Policy/low_dim_v15.hdf5",
+        "data": "/scratch/sselvaraj/projects/Flowmatch/robomimic_data/square/ph/low_dim_v15.hdf5",
         "output_dir": "/scratch/sselvaraj/projects/Flowmatch/robomimic/output",
-        "hdf5_filter_key": "train",
-        "hdf5_validation_filter_key": "valid",
-        "num_epochs": 1000,
+        "num_epochs": 2000,
         "batch_size": 256
     },
     "observation": {
