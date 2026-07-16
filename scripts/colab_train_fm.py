@@ -29,17 +29,38 @@ from robomimic.config import config_factory
 from robomimic.algo import algo_factory, RolloutPolicy
 
 
+def get_standard_obs_keys(dataset_path):
+    """
+    Detect the standard low-dim observation keys present in the dataset:
+    eef pose + gripper joints for every robot arm, plus object state.
+    Handles both single-arm (robot0_*) and two-arm tasks like transport (robot1_*).
+    """
+    import h5py
+    with h5py.File(dataset_path, "r") as f:
+        demo0 = f["data"][list(f["data"].keys())[0]]
+        keys = [
+            k for k in demo0["obs"]
+            if any(k.endswith(s) for s in ("eef_pos", "eef_quat", "gripper_qpos"))
+            and "site" not in k
+        ]
+        keys.append("object")
+    return sorted(keys)
+
+
 def get_model(dataset_path, device, num_epochs, gradient_steps_per_epoch):
     """
     Use a default flow matching config to construct the model (colab section 3).
     """
     config = config_factory(algo_name="flow_matching")
 
+    obs_keys = get_standard_obs_keys(dataset_path)
+
     # the cosine LR scheduler needs to know the total number of training steps
     # (normally injected by robomimic/scripts/train.py)
     with config.unlocked():
         config.algo.optim_params["policy"]["num_train_batches"] = gradient_steps_per_epoch
         config.algo.optim_params["policy"]["num_epochs"] = num_epochs
+        config.observation.modalities.obs.low_dim = obs_keys
 
     # read config to set up metadata for observation modalities
     ObsUtils.initialize_obs_utils_with_config(config)
@@ -49,12 +70,7 @@ def get_model(dataset_path, device, num_epochs, gradient_steps_per_epoch):
     shape_meta = FileUtils.get_shape_metadata_from_dataset(
         dataset_config={"path": dataset_path},
         action_keys=["actions"],
-        all_obs_keys=sorted((
-            "robot0_eef_pos",       # robot end effector position
-            "robot0_eef_quat",      # robot end effector rotation (in quaternion)
-            "robot0_gripper_qpos",  # parallel gripper joint position
-            "object",               # object information
-        )),
+        all_obs_keys=obs_keys,
     )
 
     model = algo_factory(
@@ -73,12 +89,7 @@ def get_data_loader(dataset_path, config, batch_size):
     """
     dataset = SequenceDataset(
         hdf5_path=dataset_path,
-        obs_keys=(
-            "robot0_eef_pos",
-            "robot0_eef_quat",
-            "robot0_gripper_qpos",
-            "object",
-        ),
+        obs_keys=tuple(get_standard_obs_keys(dataset_path)),
         action_keys=["actions"],
         action_config={"actions": {"normalization": None}},
         dataset_keys=(
