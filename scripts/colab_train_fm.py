@@ -229,12 +229,24 @@ if __name__ == "__main__":
     parser.add_argument("--eval_only", action="store_true", help="skip training and evaluate the saved checkpoint")
     parser.add_argument("--save_every", type=int, default=50, help="save a resumable checkpoint every N epochs (0 to disable)")
     parser.add_argument("--resume", action="store_true", help="resume training from the checkpoint at --ckpt if it exists")
+    parser.add_argument("--num_inference_steps", type=int, default=None, help="override algo.fm.num_inference_steps for evaluation")
+    parser.add_argument("--solver", default=None, choices=["euler", "midpoint"], help="override algo.fm.solver for evaluation")
     args = parser.parse_args()
 
     assert os.path.exists(args.dataset), args.dataset
     device = TorchUtils.get_torch_device(try_to_use_cuda=True)
 
     model, config = get_model(args.dataset, device, args.num_epochs, args.steps_per_epoch)
+
+    # inference-time overrides (config.algo is the same object the model reads)
+    if args.num_inference_steps is not None or args.solver is not None:
+        with config.unlocked():
+            if args.num_inference_steps is not None:
+                config.algo.fm.num_inference_steps = args.num_inference_steps
+            if args.solver is not None:
+                config.algo.fm.solver = args.solver
+        print("inference overrides: steps={} solver={}".format(
+            config.algo.fm.num_inference_steps, config.algo.fm.solver))
 
     if args.eval_only:
         model.deserialize(torch.load(args.ckpt, map_location=device, weights_only=False))

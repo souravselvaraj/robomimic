@@ -1,0 +1,50 @@
+{
+    "algo_name": "flow_matching",
+    "experiment": {
+        "name": "fm_transport_seed2",
+        "validate": true,
+        "logging": {
+            "terminal_output_to_txt": true,
+            "log_tb": true,
+            "log_wandb": false
+        },
+        "save": {
+            "enabled": true,
+            "every_n_epochs": 100,
+            "on_best_rollout_success_rate": true
+        },
+        "epoch_every_n_steps": 100,
+        "rollout": {
+            "enabled": true,
+            "n": 20,
+            "horizon": 700,
+            "rate": 100
+        },
+        "render_video": false
+    },
+    "train": {
+        "data": "/scratch/sselvaraj/projects/Flowmatch/robomimic_data/transport/ph/low_dim_v15.hdf5",
+        "output_dir": "/scratch/sselvaraj/projects/Flowmatch/robomimic/output/benchmark",
+        "hdf5_filter_key": "train",
+        "hdf5_validation_filter_key": "valid",
+        "num_epochs": 1000,
+        "batch_size": 256,
+        "seed": 2
+    },
+    "observation": {
+        "modalities": {
+            "obs": {
+                "low_dim": [
+                    "robot0_eef_pos",
+                    "robot0_eef_quat",
+                    "robot0_gripper_qpos",
+                    "robot1_eef_pos",
+                    "robot1_eef_quat",
+                    "robot1_gripper_qpos",
+                    "object"
+                ],
+                "rgb": []
+            }
+        }
+    }
+}
