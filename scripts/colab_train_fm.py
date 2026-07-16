@@ -124,14 +124,32 @@ def get_data_loader(dataset_path, config, batch_size):
     return data_loader
 
 
-def run_train_loop(model, data_loader, num_epochs, gradient_steps_per_epoch):
+def save_checkpoint(model, ckpt_path, epoch):
+    """
+    Save a checkpoint atomically (write to tmp, then rename) so a job killed
+    mid-save can't corrupt the previous checkpoint. Stores the epoch number and
+    EMA step count alongside model.serialize() so training can resume.
+    """
+    os.makedirs(os.path.dirname(ckpt_path), exist_ok=True)
+    ckpt = model.serialize()
+    ckpt["epoch"] = epoch
+    if model.ema is not None and hasattr(model.ema, "optimization_step"):
+        ckpt["ema_optimization_step"] = model.ema.optimization_step
+    tmp_path = ckpt_path + ".tmp"
+    torch.save(ckpt, tmp_path)
+    os.replace(tmp_path, ckpt_path)
+
+
+def run_train_loop(model, data_loader, num_epochs, gradient_steps_per_epoch,
+                   ckpt_path=None, save_every=0, start_epoch=1):
     """
     Simple training loop (colab section 4/5) - stripped-down version of
-    robomimic's train.py without logging/checkpointing per epoch.
+    robomimic's train.py without logging per epoch. If @save_every > 0, a
+    resumable checkpoint is saved to @ckpt_path every @save_every epochs.
     """
     model.set_train()
 
-    for epoch in range(1, num_epochs + 1):
+    for epoch in range(start_epoch, num_epochs + 1):
         data_loader_iter = iter(data_loader)
         losses = []
         for _ in range(gradient_steps_per_epoch):
@@ -156,6 +174,10 @@ def run_train_loop(model, data_loader, num_epochs, gradient_steps_per_epoch):
         model.on_epoch_end(epoch)
         lr = model.optimizers["policy"].param_groups[0]["lr"]
         print("Train Epoch {}: Loss {} LR {:.2e}".format(epoch, np.mean(losses), lr), flush=True)
+
+        if ckpt_path is not None and save_every > 0 and epoch % save_every == 0:
+            save_checkpoint(model, ckpt_path, epoch)
+            print("saved checkpoint at epoch {} to {}".format(epoch, ckpt_path), flush=True)
 
 
 def evaluate(model, config, dataset_path, num_rollouts, horizon):
@@ -205,6 +227,8 @@ if __name__ == "__main__":
     parser.add_argument("--horizon", type=int, default=400)
     parser.add_argument("--ckpt", default="/scratch/sselvaraj/projects/Flowmatch/robomimic/output/fm_lift_colab.pth")
     parser.add_argument("--eval_only", action="store_true", help="skip training and evaluate the saved checkpoint")
+    parser.add_argument("--save_every", type=int, default=50, help="save a resumable checkpoint every N epochs (0 to disable)")
+    parser.add_argument("--resume", action="store_true", help="resume training from the checkpoint at --ckpt if it exists")
     args = parser.parse_args()
 
     assert os.path.exists(args.dataset), args.dataset
@@ -216,11 +240,23 @@ if __name__ == "__main__":
         model.deserialize(torch.load(args.ckpt, map_location=device, weights_only=False))
         print("loaded model from {}".format(args.ckpt))
     else:
-        data_loader = get_data_loader(args.dataset, config, args.batch_size)
-        run_train_loop(model, data_loader, num_epochs=args.num_epochs, gradient_steps_per_epoch=args.steps_per_epoch)
+        start_epoch = 1
+        if args.resume and os.path.exists(args.ckpt):
+            model_dict = torch.load(args.ckpt, map_location=device, weights_only=False)
+            model.deserialize(model_dict, load_optimizers=True)
+            if model.ema is not None and "ema_optimization_step" in model_dict:
+                model.ema.optimization_step = model_dict["ema_optimization_step"]
+            start_epoch = model_dict.get("epoch", 0) + 1
+            print("resuming from {} at epoch {}".format(args.ckpt, start_epoch))
 
-        os.makedirs(os.path.dirname(args.ckpt), exist_ok=True)
-        torch.save(model.serialize(), args.ckpt)
+        data_loader = get_data_loader(args.dataset, config, args.batch_size)
+        run_train_loop(
+            model, data_loader,
+            num_epochs=args.num_epochs, gradient_steps_per_epoch=args.steps_per_epoch,
+            ckpt_path=args.ckpt, save_every=args.save_every, start_epoch=start_epoch,
+        )
+
+        save_checkpoint(model, args.ckpt, args.num_epochs)
         print("saved model to {}".format(args.ckpt))
 
     evaluate(model, config, args.dataset, num_rollouts=args.num_rollouts, horizon=args.horizon)
